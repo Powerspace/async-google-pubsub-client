@@ -3,7 +3,7 @@
 
   <groupId>com.powerspace</groupId>
   <artifactId>async-google-pubsub-client</artifactId>
-  <version>1.28</version>
+  <version>1.29</version>
   <packaging>jar</packaging>
 
   <name>async-google-pubsub-client</name>
@@ -24,9 +24,9 @@
   </licenses>
 
   <scm>
-    <connection>scm:git:https://github.com/spotify/async-google-pubsub-client.git</connection>
-    <developerConnection>scm:git:git@github.com:spotify/async-google-pubsub-client.git</developerConnection>
-    <url>https://github.com/spotify/async-google-pubsub-client</url>
+    <connection>scm:git:https://github.com/Powerspace/async-google-pubsub-client.git</connection>
+    <developerConnection>scm:git:git@github.com:Powerspace/async-google-pubsub-client.git</developerConnection>
+    <url>https://github.com/Powerspace/async-google-pubsub-client</url>
     <tag>HEAD</tag>
   </scm>
 

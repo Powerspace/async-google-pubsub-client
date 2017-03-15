@@ -149,6 +149,16 @@ public class Publisher implements Closeable {
   }
 
   /**
+   * Return the given topic current queue size.
+   * 
+   * It will never be greater than {@link queueSize}.
+   */
+  public int getTopicQueueSize(final String topic) {
+    final TopicQueue queue = topics.computeIfAbsent(topic, TopicQueue::new);
+    return queue.size.intValue();
+  }
+
+  /**
    * Publish a message on a specific topic.
    *
    * @param topic   The topic name to publish on. Note that this is the short name, not the fully qualified name
