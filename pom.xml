@@ -106,9 +106,9 @@
       <version>2.7.0</version>
     </dependency>
     <dependency>
-      <groupId>com.ning</groupId>
+      <groupId>org.asynchttpclient</groupId>
       <artifactId>async-http-client</artifactId>
-      <version>1.9.32</version>
+      <version>2.4.0</version>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
@@ -181,10 +181,10 @@
           <showWarnings>true</showWarnings>
         </configuration>
       </plugin>
-      <plugin>
+      <!--<plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
-      </plugin>
+      </plugin>-->
       <!--TODO: enable after implementing use of pubsub emulator-->
       <!--<plugin>-->
         <!--<artifactId>maven-failsafe-plugin</artifactId>-->
