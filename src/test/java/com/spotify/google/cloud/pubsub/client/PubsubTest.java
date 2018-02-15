@@ -1,3 +1,23 @@
+/*-
+ * -\-\-
+ * async-google-pubsub-client
+ * --
+ * Copyright (C) 2016 - 2017 Spotify AB
+ * --
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * -/-/-
+ */
+
 /*
  * Copyright (c) 2011-2015 Spotify AB
  *
@@ -190,15 +210,13 @@ public class PubsubTest {
     assertThat(future.operation(), is("create topic"));
     assertThat(future.method(), is("PUT"));
     assertThat(future.uri(), is(server.getUrl(expectedPath).toString()));
-    assertThat(future.payloadSize(), is(greaterThan(0L)));
+    assertThat(future.payloadSize(), is(0L));
 
     final RecordedRequest request = server.takeRequest(10, SECONDS);
 
     assertThat(request.getMethod(), is("PUT"));
     assertThat(request.getPath(), is(expectedPath));
-    assertThat(request.getHeader(CONTENT_ENCODING), is("gzip"));
-    assertThat(request.getHeader(CONTENT_LENGTH), is(String.valueOf(future.payloadSize())));
-    assertThat(request.getHeader(CONTENT_TYPE), is("application/json; charset=UTF-8"));
+    assertThat(request.getHeader(CONTENT_LENGTH), is(String.valueOf(0)));
     assertRequestHeaders(request);
 
     final Topic response = Topic.of(PROJECT, TOPIC_1);

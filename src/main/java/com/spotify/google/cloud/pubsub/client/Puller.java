@@ -1,3 +1,23 @@
+/*-
+ * -\-\-
+ * async-google-pubsub-client
+ * --
+ * Copyright (C) 2016 - 2017 Spotify AB
+ * --
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * -/-/-
+ */
+
 /*
  * Copyright (c) 2011-2015 Spotify AB
  *
@@ -79,6 +99,8 @@ public class Puller implements Closeable {
   private final int maxAckQueueSize;
   private final long pullIntervalMillis;
 
+  private final Backoff backoff;
+
   private final AtomicInteger outstandingRequests = new AtomicInteger();
   private final AtomicInteger outstandingMessages = new AtomicInteger();
 
@@ -92,6 +114,11 @@ public class Puller implements Closeable {
     this.maxOutstandingMessages = builder.maxOutstandingMessages;
     this.maxAckQueueSize = builder.maxAckQueueSize;
     this.pullIntervalMillis = builder.pullIntervalMillis;
+
+    this.backoff = Backoff.builder()
+        .initialInterval(builder.pullIntervalMillis)
+        .maxBackoffMultiplier(builder.maxBackoffMultiplier)
+        .build();
 
     // Set up a batching acker for sending acks
     this.acker = Acker.builder()
@@ -118,6 +145,7 @@ public class Puller implements Closeable {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
+    acker.close();
   }
 
   public int maxAckQueueSize() {
@@ -172,9 +200,17 @@ public class Puller implements Closeable {
           outstandingRequests.decrementAndGet();
           // Bail if pull failed
           if (ex != null) {
-            LOG.error("Pull failed", ex);
+            if ( ex instanceof RequestFailedException && ((RequestFailedException)ex).statusCode() == 429 ) {
+              LOG.debug("Going too fast, backing off");
+            } else {
+              LOG.error("Pull failed", ex);
+            }
+            backoff.sleep();
             return;
           }
+
+          // we are good. Lets go at full speed again.
+          backoff.reset();
 
           // Add entire batch to outstanding message count
           outstandingMessages.addAndGet(messages.size());
@@ -231,6 +267,7 @@ public class Puller implements Closeable {
     private int maxOutstandingMessages = 64_000;
     private int maxAckQueueSize = 10 * batchSize;
     private long pullIntervalMillis = 1000;
+    private int maxBackoffMultiplier = 0;
 
     /**
      * Set the {@link Pubsub} client to use. The client will be closed when this {@link Puller} is closed.
@@ -305,6 +342,14 @@ public class Puller implements Closeable {
      */
     public Builder pullIntervalMillis(final long pullIntervalMillis) {
       this.pullIntervalMillis = pullIntervalMillis;
+      return this;
+    }
+
+    /**
+     * Set the maximum backoff multiplier. Default is {@code 0} (no backoff).
+     */
+    public Builder maxBackoffMultiplier(final int maxBackoffMultiplier) {
+      this.maxBackoffMultiplier = maxBackoffMultiplier;
       return this;
     }
 

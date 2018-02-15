@@ -1,3 +1,23 @@
+/*-
+ * -\-\-
+ * async-google-pubsub-client
+ * --
+ * Copyright (C) 2016 - 2017 Spotify AB
+ * --
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * -/-/-
+ */
+
 /*
  * Copyright (c) 2011-2015 Spotify AB
  *
@@ -16,6 +36,24 @@
 
 package com.spotify.google.cloud.pubsub.client;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.util.concurrent.MoreExecutors.getExitingExecutorService;
+import static com.google.common.util.concurrent.MoreExecutors.getExitingScheduledExecutorService;
+import static com.spotify.google.cloud.pubsub.client.Message.isEncoded;
+import static com.spotify.google.cloud.pubsub.client.Pubsub.ResponseReader.VOID;
+import static com.spotify.google.cloud.pubsub.client.Subscription.canonicalSubscription;
+import static com.spotify.google.cloud.pubsub.client.Subscription.validateCanonicalSubscription;
+import static com.spotify.google.cloud.pubsub.client.Topic.canonicalTopic;
+import static com.spotify.google.cloud.pubsub.client.Topic.validateCanonicalTopic;
+import static java.util.Arrays.asList;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_ENCODING;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.Values.GZIP;
+import static org.jboss.netty.handler.codec.http.HttpMethod.POST;
+
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.api.client.googleapis.util.Utils;
@@ -28,7 +66,7 @@ import com.google.api.client.http.HttpResponse;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.repackaged.com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
-
+import com.google.common.io.ByteStreams;
 import com.ning.http.client.AsyncHandler;
 import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.AsyncHttpClientConfig;
@@ -37,11 +75,6 @@ import com.ning.http.client.HttpResponseHeaders;
 import com.ning.http.client.HttpResponseStatus;
 import com.ning.http.client.Request;
 import com.ning.http.client.RequestBuilder;
-
-import org.jboss.netty.handler.codec.http.HttpMethod;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -54,27 +87,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.function.Function;
 import java.util.zip.Deflater;
 import java.util.zip.GZIPOutputStream;
-
 import javax.net.ssl.SSLSocketFactory;
-
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.util.concurrent.MoreExecutors.getExitingExecutorService;
-import static com.google.common.util.concurrent.MoreExecutors.getExitingScheduledExecutorService;
-import static com.spotify.google.cloud.pubsub.client.Message.isEncoded;
-import static com.spotify.google.cloud.pubsub.client.Subscription.canonicalSubscription;
-import static com.spotify.google.cloud.pubsub.client.Subscription.validateCanonicalSubscription;
-import static com.spotify.google.cloud.pubsub.client.Topic.canonicalTopic;
-import static com.spotify.google.cloud.pubsub.client.Topic.validateCanonicalTopic;
-import static java.util.Arrays.asList;
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_ENCODING;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Values.GZIP;
-import static org.jboss.netty.handler.codec.http.HttpMethod.POST;
+import org.jboss.netty.handler.codec.http.HttpMethod;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An async low-level Google Cloud Pub/Sub client.
@@ -136,7 +155,7 @@ public class Pubsub implements Closeable {
 
     final SSLSocketFactory sslSocketFactory =
         new ConfigurableSSLSocketFactory(config.getEnabledCipherSuites(),
-                                         (SSLSocketFactory) SSLSocketFactory.getDefault());
+            (SSLSocketFactory) SSLSocketFactory.getDefault());
 
     this.transport = new NetHttpTransport.Builder()
         .setSslSocketFactory(sslSocketFactory)
@@ -236,7 +255,7 @@ public class Pubsub implements Closeable {
    */
   public PubsubFuture<TopicList> listTopics(final String project) {
     final String path = "projects/" + project + "/topics";
-    return get("list topics", path, TopicList.class);
+    return get("list topics", path, readJson(TopicList.class));
   }
 
   /**
@@ -250,7 +269,7 @@ public class Pubsub implements Closeable {
                                             final String pageToken) {
     final String query = (pageToken == null) ? "" : "?pageToken=" + pageToken;
     final String path = "projects/" + project + "/topics" + query;
-    return get("list topics", path, TopicList.class);
+    return get("list topics", path, readJson(TopicList.class));
   }
 
   /**
@@ -271,21 +290,9 @@ public class Pubsub implements Closeable {
    * @param canonicalTopic The canonical (including project) name of the topic to create.
    * @return A future that is completed when this request is completed.
    */
-  public PubsubFuture<Topic> createTopic(final String canonicalTopic) {
-    return createTopic(canonicalTopic, Topic.of(canonicalTopic));
-  }
-
-  /**
-   * Create a Pub/Sub topic.
-   *
-   * @param canonicalTopic The canonical (including project) name of the topic to create.
-   * @param req            The payload of the create request. This seems to be ignore in the current API version.
-   * @return A future that is completed when this request is completed.
-   */
-  private PubsubFuture<Topic> createTopic(final String canonicalTopic,
-                                          final Topic req) {
+  private PubsubFuture<Topic> createTopic(final String canonicalTopic) {
     validateCanonicalTopic(canonicalTopic);
-    return put("create topic", canonicalTopic, req, Topic.class);
+    return put("create topic", canonicalTopic, NO_PAYLOAD, readJson(Topic.class));
   }
 
   /**
@@ -309,7 +316,7 @@ public class Pubsub implements Closeable {
    */
   public PubsubFuture<Topic> getTopic(final String canonicalTopic) {
     validateCanonicalTopic(canonicalTopic);
-    return get("get topic", canonicalTopic, Topic.class);
+    return get("get topic", canonicalTopic, readJson(Topic.class));
   }
 
   /**
@@ -334,7 +341,7 @@ public class Pubsub implements Closeable {
    */
   public PubsubFuture<Void> deleteTopic(final String canonicalTopic) {
     validateCanonicalTopic(canonicalTopic);
-    return delete("delete topic", canonicalTopic, Void.class);
+    return delete("delete topic", canonicalTopic, VOID);
   }
 
   /**
@@ -361,7 +368,7 @@ public class Pubsub implements Closeable {
    */
   public PubsubFuture<SubscriptionList> listSubscriptions(final String project) {
     final String path = "projects/" + project + "/subscriptions";
-    return get("list subscriptions", path, SubscriptionList.class);
+    return get("list subscriptions", path, readJson(SubscriptionList.class));
   }
 
   /**
@@ -375,7 +382,7 @@ public class Pubsub implements Closeable {
                                                           final String pageToken) {
     final String query = (pageToken == null) ? "" : "?pageToken=" + pageToken;
     final String path = "projects/" + project + "/subscriptions" + query;
-    return get("list subscriptions", path, SubscriptionList.class);
+    return get("list subscriptions", path, readJson(SubscriptionList.class));
   }
 
   /**
@@ -410,7 +417,8 @@ public class Pubsub implements Closeable {
   private PubsubFuture<Subscription> createSubscription(final String canonicalSubscriptionName,
                                                         final Subscription subscription) {
     validateCanonicalSubscription(canonicalSubscriptionName);
-    return put("create subscription", canonicalSubscriptionName, subscription, Subscription.class);
+    return put("create subscription", canonicalSubscriptionName, SubscriptionCreateRequest.of(subscription),
+        readJson(Subscription.class));
   }
 
   /**
@@ -434,7 +442,7 @@ public class Pubsub implements Closeable {
    */
   public PubsubFuture<Subscription> getSubscription(final String canonicalSubscriptionName) {
     validateCanonicalSubscription(canonicalSubscriptionName);
-    return get("get subscription", canonicalSubscriptionName, Subscription.class);
+    return get("get subscription", canonicalSubscriptionName, readJson(Subscription.class));
   }
 
   /**
@@ -459,7 +467,7 @@ public class Pubsub implements Closeable {
    */
   public PubsubFuture<Void> deleteSubscription(final String canonicalSubscriptionName) {
     validateCanonicalSubscription(canonicalSubscriptionName);
-    return delete("delete subscription", canonicalSubscriptionName, Void.class);
+    return delete("delete subscription", canonicalSubscriptionName, VOID);
   }
 
   /**
@@ -514,8 +522,8 @@ public class Pubsub implements Closeable {
         throw new IllegalArgumentException("Message data must be Base64 encoded: " + message);
       }
     }
-    return post("publish", path, PublishRequest.of(messages), PublishResponse.class)
-        .thenApply(PublishResponse::messageIds);
+    return post("publish", path, PublishRequest.of(messages), readJson(PublishResponse.class)
+        .andThen(PublishResponse::messageIds));
   }
 
   /**
@@ -610,8 +618,8 @@ public class Pubsub implements Closeable {
     // TODO (dano): use async client when chunked encoding is fixed
 //    return post("pull", path, pullRequest, PullResponse.class)
 //        .thenApply(PullResponse::receivedMessages);
-    return requestJavaNet("pull", POST, path, PullResponse.class, pullRequest)
-        .thenApply(PullResponse::receivedMessages);
+    return requestJavaNet("pull", POST, path, pullRequest,
+        readJson(PullResponse.class).andThen(PullResponse::receivedMessages));
   }
 
   /**
@@ -650,7 +658,7 @@ public class Pubsub implements Closeable {
     final AcknowledgeRequest req = AcknowledgeRequest.builder()
         .ackIds(ackIds)
         .build();
-    return post("acknowledge", path, req, Void.class);
+    return post("acknowledge", path, req, VOID);
   }
 
   /**
@@ -697,52 +705,52 @@ public class Pubsub implements Closeable {
         .ackDeadlineSeconds(ackDeadlineSeconds)
         .ackIds(ackIds)
         .build();
-    return post("modify ack deadline", path, req, Void.class);
+    return post("modify ack deadline", path, req, VOID);
   }
 
   /**
    * Make a GET request.
    */
-  private <T> PubsubFuture<T> get(final String operation, final String path, final Class<T> responseClass) {
-    return request(operation, HttpMethod.GET, path, responseClass);
+  private <T> PubsubFuture<T> get(final String operation, final String path, final ResponseReader<T> responseReader) {
+    return request(operation, HttpMethod.GET, path, responseReader);
   }
 
   /**
    * Make a POST request.
    */
   private <T> PubsubFuture<T> post(final String operation, final String path, final Object payload,
-                                   final Class<T> responseClass) {
-    return request(operation, HttpMethod.POST, path, responseClass, payload);
+                                   final ResponseReader<T> responseReader) {
+    return request(operation, HttpMethod.POST, path, payload, responseReader);
   }
 
   /**
    * Make a PUT request.
    */
   private <T> PubsubFuture<T> put(final String operation, final String path, final Object payload,
-                                  final Class<T> responseClass) {
-    return request(operation, HttpMethod.PUT, path, responseClass, payload);
+                                  final ResponseReader<T> responseReader) {
+    return request(operation, HttpMethod.PUT, path, payload, responseReader);
   }
 
   /**
    * Make a DELETE request.
    */
-  private <T> PubsubFuture<T> delete(final String operation, final String path, final Class<T> responseClass) {
-    return request(operation, HttpMethod.DELETE, path, responseClass);
+  private <T> PubsubFuture<T> delete(final String operation, final String path, final ResponseReader<T> responseReader) {
+    return request(operation, HttpMethod.DELETE, path, responseReader);
   }
 
   /**
    * Make an HTTP request.
    */
   private <T> PubsubFuture<T> request(final String operation, final HttpMethod method, final String path,
-                                      final Class<T> responseClass) {
-    return request(operation, method, path, responseClass, NO_PAYLOAD);
+                                      final ResponseReader<T> responseReader) {
+    return request(operation, method, path, NO_PAYLOAD, responseReader);
   }
 
   /**
    * Make an HTTP request.
    */
   private <T> PubsubFuture<T> request(final String operation, final HttpMethod method, final String path,
-                                      final Class<T> responseClass, final Object payload) {
+      final Object payload, final ResponseReader<T> responseReader) {
 
     final String uri = baseUri + path;
     final RequestBuilder builder = new RequestBuilder()
@@ -760,6 +768,7 @@ public class Pubsub implements Closeable {
       builder.setHeader(CONTENT_TYPE, APPLICATION_JSON_UTF8);
       builder.setBody(json);
     } else {
+      builder.setHeader(CONTENT_LENGTH, String.valueOf(0));
       payloadSize = 0;
     }
 
@@ -803,7 +812,7 @@ public class Pubsub implements Closeable {
           return STATE.ABORT;
         }
 
-        if (responseClass == Void.class) {
+        if (responseReader == VOID) {
           future.succeed(null);
           return STATE.ABORT;
         }
@@ -822,8 +831,8 @@ public class Pubsub implements Closeable {
           return null;
         }
         try {
-          future.succeed(Json.read(bytes.toByteArray(), responseClass));
-        } catch (IOException e) {
+          future.succeed(responseReader.read(bytes.toByteArray()));
+        } catch (Exception e) {
           future.fail(e);
         }
         return null;
@@ -837,7 +846,7 @@ public class Pubsub implements Closeable {
    * Make an HTTP request using {@link java.net.HttpURLConnection}.
    */
   private <T> PubsubFuture<T> requestJavaNet(final String operation, final HttpMethod method, final String path,
-                                             final Class<T> responseClass, final Object payload) {
+      final Object payload, final ResponseReader<T> responseReader) {
 
     final HttpRequestFactory requestFactory = transport.createRequestFactory();
 
@@ -899,14 +908,15 @@ public class Pubsub implements Closeable {
         return;
       }
 
-      if (responseClass == Void.class) {
+      if (responseReader == VOID) {
         future.succeed(null);
         return;
       }
 
       try {
-        future.succeed(Json.read(response.getContent(), responseClass));
-      } catch (IOException e) {
+
+        future.succeed(responseReader.read(ByteStreams.toByteArray(response.getContent())));
+      } catch (Exception e) {
         future.fail(e);
       }
     });
@@ -1111,6 +1121,38 @@ public class Pubsub implements Closeable {
       checkArgument(uri.getRawFragment() == null, "illegal service uri: %s", uri);
       this.uri = uri;
       return this;
+    }
+  }
+
+  /**
+   * A {@link ResponseReader} that parses a response payload as Json into a specified {@link Class}.
+   * @param cls The {@link Class} to parse the Json payload as.
+   */
+  private <T> ResponseReader<T> readJson(Class<T> cls) {
+    return payload -> Json.read(payload, cls);
+  }
+
+  /**
+   * A function that takes a payload byte array and parses it into some object.
+   */
+  @FunctionalInterface
+  interface ResponseReader<T> {
+
+    /**
+     * A marker {@link ResponseReader} that completely disables reading of the response payload.
+     */
+    ResponseReader<Void> VOID = bytes -> null;
+
+    /**
+     * Parse a byte array into an object.
+     */
+    T read(byte[] bytes) throws Exception;
+
+    /**
+     * Perform additional transformation on the parsed object.
+     */
+    default <U> ResponseReader<U> andThen(Function<T, U> f) {
+      return bytes -> f.apply(read(bytes));
     }
   }
 }

@@ -3,16 +3,16 @@
 
   <groupId>com.powerspace</groupId>
   <artifactId>async-google-pubsub-client</artifactId>
-  <version>1.29</version>
+  <version>1.32-SNAPSHOT</version>
   <packaging>jar</packaging>
 
   <name>async-google-pubsub-client</name>
   <url>https://github.com/spotify/async-google-pubsub-client</url>
 
   <parent>
-    <groupId>org.sonatype.oss</groupId>
-    <artifactId>oss-parent</artifactId>
-    <version>9</version>
+    <groupId>com.spotify</groupId>
+    <artifactId>foss-root</artifactId>
+    <version>7</version>
   </parent>
 
   <licenses>
@@ -67,7 +67,7 @@
     <dependency>
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
-      <version>18.0</version>
+      <version>19.0</version>
     </dependency>
     <dependency>
       <groupId>io.norberg</groupId>
@@ -213,18 +213,10 @@
           <showWarnings>true</showWarnings>
         </configuration>
       </plugin>
-      <plugin>
-        <artifactId>maven-failsafe-plugin</artifactId>
-        <version>2.18.1</version>
-        <executions>
-          <execution>
-            <goals>
-              <goal>integration-test</goal>
-              <goal>verify</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
+      <!--TODO: enable after implementing use of pubsub emulator-->
+      <!--<plugin>-->
+        <!--<artifactId>maven-failsafe-plugin</artifactId>-->
+      <!--</plugin>-->
       <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
