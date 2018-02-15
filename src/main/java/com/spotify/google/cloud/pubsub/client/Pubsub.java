@@ -48,6 +48,8 @@ import static com.spotify.google.cloud.pubsub.client.Topic.canonicalTopic;
 import static com.spotify.google.cloud.pubsub.client.Topic.validateCanonicalTopic;
 import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.asynchttpclient.Dsl.asyncHttpClient;
+import static org.asynchttpclient.Dsl.config;
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_ENCODING;
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
@@ -67,14 +69,7 @@ import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.repackaged.com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.ByteStreams;
-import com.ning.http.client.AsyncHandler;
-import com.ning.http.client.AsyncHttpClient;
-import com.ning.http.client.AsyncHttpClientConfig;
-import com.ning.http.client.HttpResponseBodyPart;
-import com.ning.http.client.HttpResponseHeaders;
-import com.ning.http.client.HttpResponseStatus;
-import com.ning.http.client.Request;
-import com.ning.http.client.RequestBuilder;
+
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -91,6 +86,15 @@ import java.util.function.Function;
 import java.util.zip.Deflater;
 import java.util.zip.GZIPOutputStream;
 import javax.net.ssl.SSLSocketFactory;
+
+import org.asynchttpclient.AsyncHandler;
+import org.asynchttpclient.AsyncHttpClient;
+import org.asynchttpclient.AsyncHttpClientConfig;
+import org.asynchttpclient.DefaultAsyncHttpClientConfig;
+import org.asynchttpclient.HttpResponseBodyPart;
+import org.asynchttpclient.HttpResponseStatus;
+import org.asynchttpclient.Request;
+import org.asynchttpclient.RequestBuilder;
 import org.jboss.netty.handler.codec.http.HttpMethod;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,12 +148,10 @@ public class Pubsub implements Closeable {
     log.debug("enabled cipher suites: {}", Arrays.toString(config.getEnabledCipherSuites()));
     log.debug("response compression enforced: {}", config.isCompressionEnforced());
     log.debug("request compression level: {}", builder.compressionLevel);
-    log.debug("accept any certificate: {}", config.isAcceptAnyCertificate());
+    log.debug("accept any certificate: {}", config.isUseInsecureTrustManager());
     log.debug("follows redirect: {}", config.isFollowRedirect());
-    log.debug("pooled connection TTL: {}", config.getConnectionTTL());
+    log.debug("pooled connection TTL: {}", config.getConnectionTtl());
     log.debug("pooled connection idle timeout: {}", config.getPooledConnectionIdleTimeout());
-    log.debug("pooling connections: {}", config.isAllowPoolingConnections());
-    log.debug("pooling SSL connections: {}", config.isAllowPoolingSslConnections());
     log.debug("user agent: {}", config.getUserAgent());
     log.debug("max request retry: {}", config.getMaxRequestRetry());
 
@@ -161,7 +163,7 @@ public class Pubsub implements Closeable {
         .setSslSocketFactory(sslSocketFactory)
         .build();
 
-    this.client = new AsyncHttpClient(config);
+    this.client = asyncHttpClient(config);
 
     this.compressionLevel = builder.compressionLevel;
 
@@ -210,7 +212,7 @@ public class Pubsub implements Closeable {
    * Close this {@link Pubsub} client.
    */
   @Override
-  public void close() {
+  public void close() throws IOException {
     executor.shutdown();
     scheduler.shutdown();
     client.close();
@@ -791,38 +793,38 @@ public class Pubsub implements Closeable {
       }
 
       @Override
-      public STATE onBodyPartReceived(final HttpResponseBodyPart bodyPart) throws Exception {
+      public State onBodyPartReceived(final HttpResponseBodyPart bodyPart) throws Exception {
         bytes.write(bodyPart.getBodyPartBytes());
-        return STATE.CONTINUE;
+        return State.CONTINUE;
       }
 
       @Override
-      public STATE onStatusReceived(final HttpResponseStatus status) throws Exception {
+      public State onStatusReceived(final HttpResponseStatus status) {
 
         // Return null for 404'd GET & DELETE requests
         if (status.getStatusCode() == 404 && method == HttpMethod.GET || method == HttpMethod.DELETE) {
           future.succeed(null);
-          return STATE.ABORT;
+          return State.ABORT;
         }
 
         // Fail on non-2xx responses
         final int statusCode = status.getStatusCode();
         if (!(statusCode >= 200 && statusCode < 300)) {
           future.fail(new RequestFailedException(status.getStatusCode(), status.getStatusText()));
-          return STATE.ABORT;
+          return State.ABORT;
         }
 
         if (responseReader == VOID) {
           future.succeed(null);
-          return STATE.ABORT;
+          return State.ABORT;
         }
 
-        return STATE.CONTINUE;
+        return State.CONTINUE;
       }
 
       @Override
-      public STATE onHeadersReceived(final HttpResponseHeaders headers) throws Exception {
-        return STATE.CONTINUE;
+      public State onHeadersReceived(final io.netty.handler.codec.http.HttpHeaders  headers) {
+        return State.CONTINUE;
       }
 
       @Override
@@ -965,7 +967,7 @@ public class Pubsub implements Closeable {
 
     private static final int DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 
-    private final AsyncHttpClientConfig.Builder clientConfig = new AsyncHttpClientConfig.Builder()
+    private final DefaultAsyncHttpClientConfig.Builder clientConfig = config()
         .setCompressionEnforced(true)
         .setUseProxySelector(true)
         .setRequestTimeout(DEFAULT_REQUEST_TIMEOUT_MS)
@@ -1052,7 +1054,7 @@ public class Pubsub implements Closeable {
      * @return this config builder.
      */
     public Builder pooledConnectionTTL(final int pooledConnectionTTL) {
-      clientConfig.setConnectionTTL(pooledConnectionTTL);
+      clientConfig.setConnectionTtl(pooledConnectionTTL);
       return this;
     }
 
@@ -1064,18 +1066,6 @@ public class Pubsub implements Closeable {
      */
     public Builder pooledConnectionIdleTimeout(final int pooledConnectionIdleTimeout) {
       clientConfig.setPooledConnectionIdleTimeout(pooledConnectionIdleTimeout);
-      return this;
-    }
-
-    /**
-     * Set whether to allow connection pooling or not. Default is true.
-     *
-     * @param allowPoolingConnections the maximum number of connections.
-     * @return this config builder.
-     */
-    public Builder allowPoolingConnections(final boolean allowPoolingConnections) {
-      clientConfig.setAllowPoolingConnections(allowPoolingConnections);
-      clientConfig.setAllowPoolingSslConnections(allowPoolingConnections);
       return this;
     }
 
