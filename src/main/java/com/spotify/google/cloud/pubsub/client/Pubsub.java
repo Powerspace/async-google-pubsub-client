@@ -38,6 +38,7 @@ package com.spotify.google.cloud.pubsub.client;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.net.HttpHeaders.CONNECTION;
 import static com.google.common.util.concurrent.MoreExecutors.getExitingExecutorService;
 import static com.google.common.util.concurrent.MoreExecutors.getExitingScheduledExecutorService;
 import static com.spotify.google.cloud.pubsub.client.Message.isEncoded;
@@ -54,6 +55,7 @@ import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_ENCOD
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Values.GZIP;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.Values.KEEP_ALIVE;
 import static org.jboss.netty.handler.codec.http.HttpMethod.POST;
 
 import com.google.api.client.auth.oauth2.Credential;
@@ -759,6 +761,7 @@ public class Pubsub implements Closeable {
         .setUrl(uri)
         .setMethod(method.toString())
         .setHeader("Authorization", "Bearer " + accessToken)
+        .setHeader(CONNECTION, KEEP_ALIVE)
         .setHeader("User-Agent", USER_AGENT);
 
     final long payloadSize;
@@ -968,6 +971,7 @@ public class Pubsub implements Closeable {
     private static final int DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 
     private final DefaultAsyncHttpClientConfig.Builder clientConfig = config()
+        .setKeepAlive(true)
         .setCompressionEnforced(true)
         .setUseProxySelector(true)
         .setRequestTimeout(DEFAULT_REQUEST_TIMEOUT_MS)

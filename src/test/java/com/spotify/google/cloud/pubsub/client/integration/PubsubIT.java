@@ -121,7 +121,7 @@ public class PubsubIT {
   }
 
   @After
-  public void tearDown() throws ExecutionException, InterruptedException {
+  public void tearDown() throws ExecutionException, InterruptedException, IOException {
     if (pubsub != null) {
       pubsub.deleteSubscription(PROJECT, SUBSCRIPTION).exceptionally(t -> null).get();
       pubsub.deleteTopic(PROJECT, TOPIC).exceptionally(t -> null).get();

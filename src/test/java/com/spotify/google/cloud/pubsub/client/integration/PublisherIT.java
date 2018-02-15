@@ -46,6 +46,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -82,7 +83,7 @@ public class PublisherIT {
   }
 
   @After
-  public void tearDown() throws ExecutionException, InterruptedException {
+  public void tearDown() throws ExecutionException, InterruptedException, IOException {
     if (publisher != null) {
       publisher.close();
     }
