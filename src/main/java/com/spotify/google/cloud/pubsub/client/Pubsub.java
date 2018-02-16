@@ -39,6 +39,7 @@ package com.spotify.google.cloud.pubsub.client;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.net.HttpHeaders.CONNECTION;
+import static com.google.common.net.HttpHeaders.CONTENT_LENGTH;
 import static com.google.common.util.concurrent.MoreExecutors.getExitingExecutorService;
 import static com.google.common.util.concurrent.MoreExecutors.getExitingScheduledExecutorService;
 import static com.spotify.google.cloud.pubsub.client.Message.isEncoded;
@@ -47,16 +48,15 @@ import static com.spotify.google.cloud.pubsub.client.Subscription.canonicalSubsc
 import static com.spotify.google.cloud.pubsub.client.Subscription.validateCanonicalSubscription;
 import static com.spotify.google.cloud.pubsub.client.Topic.canonicalTopic;
 import static com.spotify.google.cloud.pubsub.client.Topic.validateCanonicalTopic;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_ENCODING;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
+import static io.netty.handler.codec.http.HttpHeaderValues.GZIP;
+import static io.netty.handler.codec.http.HttpHeaderValues.KEEP_ALIVE;
+import static io.netty.handler.codec.http.HttpMethod.POST;
 import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.asynchttpclient.Dsl.asyncHttpClient;
 import static org.asynchttpclient.Dsl.config;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_ENCODING;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Values.GZIP;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Values.KEEP_ALIVE;
-import static org.jboss.netty.handler.codec.http.HttpMethod.POST;
 
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
@@ -89,6 +89,7 @@ import java.util.zip.Deflater;
 import java.util.zip.GZIPOutputStream;
 import javax.net.ssl.SSLSocketFactory;
 
+import io.netty.handler.codec.http.HttpMethod;
 import org.asynchttpclient.AsyncHandler;
 import org.asynchttpclient.AsyncHttpClient;
 import org.asynchttpclient.AsyncHttpClientConfig;
@@ -97,7 +98,6 @@ import org.asynchttpclient.HttpResponseBodyPart;
 import org.asynchttpclient.HttpResponseStatus;
 import org.asynchttpclient.Request;
 import org.asynchttpclient.RequestBuilder;
-import org.jboss.netty.handler.codec.http.HttpMethod;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -860,7 +860,7 @@ public class Pubsub implements Closeable {
     final HttpHeaders headers = new HttpHeaders();
     final HttpRequest request;
     try {
-      request = requestFactory.buildRequest(method.getName(), new GenericUrl(URI.create(uri)), null);
+      request = requestFactory.buildRequest(method.name(), new GenericUrl(URI.create(uri)), null);
     } catch (IOException e) {
       throw Throwables.propagate(e);
     }
@@ -872,7 +872,7 @@ public class Pubsub implements Closeable {
     if (payload != NO_PAYLOAD) {
       final byte[] json = gzipJson(payload);
       payloadSize = json.length;
-      headers.setContentEncoding(GZIP);
+      headers.setContentEncoding(GZIP.toString());
       headers.setContentLength((long) json.length);
       headers.setContentType(APPLICATION_JSON_UTF8);
       request.setContent(new ByteArrayContent(APPLICATION_JSON_UTF8, json));
