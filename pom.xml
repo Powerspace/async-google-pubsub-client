@@ -3,7 +3,7 @@
 
   <groupId>com.powerspace</groupId>
   <artifactId>async-google-pubsub-client</artifactId>
-  <version>1.32</version>
+  <version>1.33</version>
   <packaging>jar</packaging>
 
   <name>async-google-pubsub-client</name>
